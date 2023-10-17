@@ -106,7 +106,7 @@ RUN if [ "${ENABLE_GC_WII_SUPPORT}" = "YES" ]; then \
     curl -sSL https://github.com/encounter/gc-wii-binutils/releases/download/2.42-1/linux-`uname -m`.zip | \
     bsdtar -xvf- -C /usr/bin && \
     chmod +x /usr/bin/powerpc-eabi-*; \
-  fi
+    fi
 
 RUN mkdir -p /etc/fonts
 
