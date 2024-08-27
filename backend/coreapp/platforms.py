@@ -79,7 +79,7 @@ MSDOS = Platform(
     name="Microsoft DOS",
     description="x86",
     arch="i686",
-    assemble_cmd='jwasm -c -Fo"$OUTPUT" "$PRELUDE" "$INPUT"',
+    assemble_cmd='jwasm -c -Fo"$OUTPUT" -Fi"$PRELUDE" "$INPUT"',
     objdump_cmd="omf-objdump",
     nm_cmd="omf-nm",
 )
@@ -146,9 +146,9 @@ PSP = Platform(
     name="PlayStation Portable",
     description="MIPS (little-endian)",
     arch="mipsel:4000",
-    assemble_cmd='mips-linux-gnu-as -EL -march=gs464 -mabi=32 -o "$OUTPUT" "$PRELUDE" "$INPUT"',
-    objdump_cmd="mips-linux-gnu-objdump",
-    nm_cmd="mips-linux-gnu-nm",
+    assemble_cmd='mips-ps2-decompals-as -EL -march=gs464 -mabi=32 -o "$OUTPUT" "$PRELUDE" "$INPUT"',
+    objdump_cmd="mips-ps2-decompals-objdump",
+    nm_cmd="mips-ps2-decompals-nm",
     diff_flags=COMMON_DIFF_FLAGS + COMMON_MIPS_DIFF_FLAGS,
     has_decompiler=True,
 )
@@ -164,12 +164,24 @@ SATURN = Platform(
     diff_flags=COMMON_DIFF_FLAGS,
 )
 
+DREAMCAST = Platform(
+    id="dreamcast",
+    name="Dreamcast",
+    description="SH4 (little-endian)",
+    arch="sh4",
+    assemble_cmd='sh-elf-as --isa=sh4 --little --relax -o "$OUTPUT" "$PRELUDE" "$INPUT"',
+    objdump_cmd="sh-elf-objdump",
+    nm_cmd="sh-elf-nm",
+    diff_flags=COMMON_DIFF_FLAGS,
+    has_decompiler=False,
+)
+
 PS2 = Platform(
     id="ps2",
     name="PlayStation 2",
     description="MIPS (little-endian)",
     arch="mipsee",
-    assemble_cmd='mips-ps2-decompals-as -EL -march=r5900 -mabi=eabi -o "$OUTPUT" "$PRELUDE" "$INPUT"',
+    assemble_cmd='mips-ps2-decompals-as -EL -march=r5900 -o "$OUTPUT" "$PRELUDE" "$INPUT"',
     objdump_cmd="mips-ps2-decompals-objdump",
     nm_cmd="mips-ps2-decompals-nm",
     diff_flags=COMMON_DIFF_FLAGS + COMMON_MIPS_DIFF_FLAGS,
@@ -241,6 +253,7 @@ _platforms: OrderedDict[str, Platform] = OrderedDict(
         "ps2": PS2,
         "psp": PSP,
         "saturn": SATURN,
+        "dreamcast": DREAMCAST,
         "macosx": MACOSX,
         "msdos": MSDOS,
         "win32": WIN32,

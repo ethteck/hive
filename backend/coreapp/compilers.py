@@ -9,6 +9,7 @@ from coreapp import platforms
 from coreapp.flags import (
     COMMON_ARMCC_FLAGS,
     COMMON_CLANG_FLAGS,
+    COMMON_SHC_FLAGS,
     COMMON_GCC_FLAGS,
     COMMON_GCC_PS1_FLAGS,
     COMMON_GCC_PS2_FLAGS,
@@ -36,6 +37,7 @@ from coreapp.platforms import (
     PS2,
     PSP,
     SATURN,
+    DREAMCAST,
     SWITCH,
     WIN32,
     Platform,
@@ -105,6 +107,12 @@ class ClangCompiler(Compiler):
 class ArmccCompiler(Compiler):
     flags: ClassVar[Flags] = COMMON_ARMCC_FLAGS
     library_include_flag: str = "-J"
+
+
+@dataclass(frozen=True)
+class SHCCompiler(Compiler):
+    flags: ClassVar[Flags] = COMMON_SHC_FLAGS
+    library_include_flag: str = ""
 
 
 @dataclass(frozen=True)
@@ -317,11 +325,18 @@ PSYQ_MSDOS_CC = (
     '(HOME="." /usr/bin/dosemu -quiet -dumb -f ${COMPILER_DIR}/dosemurc -K . -E "ASPSX.EXE -quiet object.os -o object.oo") && '
     '${COMPILER_DIR}/psyq-obj-parser object.oo -o "$OUTPUT"'
 )
+
 PSYQ_CC = (
-    'cpp -P "$INPUT" | unix2dos | '
-    '${WIBO} ${COMPILER_DIR}/CC1PSX.EXE -quiet ${COMPILER_FLAGS} -o "$OUTPUT".s && '
-    '${WIBO} ${COMPILER_DIR}/ASPSX.EXE -quiet "$OUTPUT".s -o "$OUTPUT".obj && '
-    '${COMPILER_DIR}/psyq-obj-parser "$OUTPUT".obj -o "$OUTPUT"'
+    'cpp -P "${INPUT}" | unix2dos | '
+    '${WIBO} ${COMPILER_DIR}/CC1PSX.EXE -quiet ${COMPILER_FLAGS} -o "${OUTPUT}".s && '
+    '${WIBO} ${COMPILER_DIR}/ASPSX.EXE -quiet "${OUTPUT}".s -o "${OUTPUT}"bj && '
+    '${COMPILER_DIR}/psyq-obj-parser "${OUTPUT}"bj -o "${OUTPUT}"'
+)
+
+PSYQ_263_221 = GCCPS1Compiler(
+    id="psyq_263_221",
+    platform=PS1,
+    cc=PSYQ_MSDOS_CC,
 )
 
 PSYQ33 = GCCPS1Compiler(
@@ -348,50 +363,41 @@ PSYQ40 = GCCPS1Compiler(
     cc=PSYQ_CC,
 )
 
-PSYQ41 = GCCPS1Compiler(
-    id="psyq4.1",
-    platform=PS1,
-    cc=PSYQ_CC,
-)
-
 PSYQ43 = GCCPS1Compiler(
     id="psyq4.3",
     platform=PS1,
     cc=PSYQ_CC,
 )
 
+PSYQ_CCPSX = (
+    'echo "[ccpsx]" >> SN.INI && '
+    'echo "compiler_path=${COMPILER_DIR//\\//\\\\}" >> SN.INI && '
+    'echo "assembler_path=${COMPILER_DIR//\\//\\\\}" >> SN.INI && '
+    'echo "tmpdir=/tmp" >> SN.INI && '
+    'SN_PATH=. ${WINE} ${COMPILER_DIR}/CCPSX.EXE -v -c ${COMPILER_FLAGS} "${INPUT}" -o "${OUTPUT}bj" && '
+    '${COMPILER_DIR}/psyq-obj-parser "${OUTPUT}"bj -o "${OUTPUT}"'
+)
+
+PSYQ41 = GCCPS1Compiler(
+    id="psyq4.1",
+    platform=PS1,
+    cc=PSYQ_CCPSX,
+)
+
 PSYQ44 = GCCPS1Compiler(
     id="psyq4.4",
     platform=PS1,
-    cc=PSYQ_CC,
+    cc=PSYQ_CCPSX,
 )
 
 PSYQ45 = GCCPS1Compiler(
     id="psyq4.5",
     platform=PS1,
-    cc=PSYQ_CC,
+    cc=PSYQ_CCPSX,
 )
 
 PSYQ46 = GCCPS1Compiler(
     id="psyq4.6",
-    platform=PS1,
-    cc=PSYQ_CC,
-)
-
-PSYQ_CCPSX = (
-    "echo ${OUTPUT} && "
-    "echo pwd is $(pwd) && "
-    'echo "[ccpsx]" >> SN.INI && '
-    'echo "compiler_path=${COMPILER_DIR//\\//\\\\}" >> SN.INI && '
-    'echo "assembler_path=${COMPILER_DIR//\\//\\\\}" >> SN.INI && '
-    'echo "tmpdir=/tmp" >> SN.INI && '
-    'SN_PATH=. ${WIBO} ${COMPILER_DIR}/CCPSX.EXE -v -c ${COMPILER_FLAGS} "${INPUT}" -o "${OUTPUT}bj" && '
-    '${COMPILER_DIR}/psyq-obj-parser "${OUTPUT}"bj -o "${OUTPUT}"'
-)
-
-PSYQ44_CCPSX = GCCPS1Compiler(
-    id="psyq4.4-ccpsx",
-    base_compiler=PSYQ44,
     platform=PS1,
     cc=PSYQ_CCPSX,
 )
@@ -473,6 +479,12 @@ GCC281_MIPSEL = GCCPS1Compiler(
     cc=PS1_GCC,
 )
 
+GCC281_PSX = GCCPS1Compiler(
+    id="gcc2.8.1-psx",
+    platform=PS1,
+    cc=PS1_GCC,
+)
+
 GCC29166_MIPSEL = GCCPS1Compiler(
     id="gcc2.91.66-mipsel",
     platform=PS1,
@@ -501,6 +513,15 @@ CYGNUS_2_7_96Q3 = GCCSaturnCompiler(
     platform=SATURN,
     cc=SATURN_CC,
 )
+
+DREAMCAST_CC = (
+    'cat "$INPUT" | unix2dos > dos_src.c && '
+    "cp -r ${COMPILER_DIR}/bin/* . && "
+    "(SHC_LIB=. SHC_TMP=. ${WINE} ${COMPILER_DIR}/bin/shc.exe dos_src.c ${COMPILER_FLAGS} -comment=nonest -cpu=sh4 -division=cpu -fpu=single -endian=little -extra=a=1800 -pic=0 -macsave=0 -sjis -string=const -aggressive=2 -object=dos_src.obj) && "
+    "${WIBO} ${COMPILER_DIR}/bin/elfcnv.exe dos_src.obj ${OUTPUT}"
+)
+
+SHC_V51R11 = SHCCompiler(id="shc-v5.1r11", platform=DREAMCAST, cc=DREAMCAST_CC)
 
 # PS2
 EE_GCC29_990721 = GCCPS2Compiler(
@@ -1015,6 +1036,12 @@ MWCC_233_163N = MWCCWiiGCCompiler(
     cc=MWCCEPPC_CC,
 )
 
+MWCC_242_53 = MWCCWiiGCCompiler(
+    id="mwcc_242_53",
+    platform=GC_WII,
+    cc=MWCCEPPC_CC,
+)
+
 MWCC_242_81 = MWCCWiiGCCompiler(
     id="mwcc_242_81",
     platform=GC_WII,
@@ -1029,6 +1056,12 @@ MWCC_242_81R = MWCCWiiGCCompiler(
 
 MWCC_247_92 = MWCCWiiGCCompiler(
     id="mwcc_247_92",
+    platform=GC_WII,
+    cc=MWCCEPPC_CC,
+)
+
+MWCC_247_92P1 = MWCCWiiGCCompiler(
+    id="mwcc_247_92p1",
     platform=GC_WII,
     cc=MWCCEPPC_CC,
 )
@@ -1125,6 +1158,12 @@ MWCC_43_188 = MWCCWiiGCCompiler(
 
 MWCC_43_172 = MWCCWiiGCCompiler(
     id="mwcc_43_172",
+    platform=GC_WII,
+    cc=MWCCEPPC_CC,
+)
+
+MWCC_43_202 = MWCCWiiGCCompiler(
+    id="mwcc_43_202",
     platform=GC_WII,
     cc=MWCCEPPC_CC,
 )
@@ -1300,7 +1339,7 @@ MWCC_40_1051 = MWCCNDSArm9Compiler(
     cc=MWCCARM_CC,
 )
 
-CL_WIN = '${WIBO} "${COMPILER_DIR}"/Bin/CL.EXE /c /nologo /IZ:"${COMPILER_DIR}"/Include/ ${COMPILER_FLAGS} /Fd"Z:/tmp/" /Bk"Z:/tmp/" /Fo"Z:${OUTPUT}" "Z:${INPUT}"'
+CL_WIN = '${WIBO} "${COMPILER_DIR}/Bin/CL.EXE" /c /nologo /I"Z:${COMPILER_DIR}/Include/" ${COMPILER_FLAGS} /Fd"Z:/tmp/" /Bk"Z:/tmp/" /Fo"Z:${OUTPUT}" "Z:${INPUT}"'
 
 MSVC40 = MSVCCompiler(
     id="msvc4.0",
@@ -1358,6 +1397,12 @@ MSVC70 = MSVCCompiler(
 
 MSVC71 = MSVCCompiler(
     id="msvc7.1",
+    platform=WIN32,
+    cc=CL_WIN,
+)
+
+MSVC80 = MSVCCompiler(
+    id="msvc8.0",
     platform=WIN32,
     cc=CL_WIN,
 )
@@ -1450,6 +1495,7 @@ _all_compilers: List[Compiler] = [
     CLANG_401,
     CLANG_800,
     # PS1
+    PSYQ_263_221,
     PSYQ33,
     PSYQ35,
     PSYQ36,
@@ -1459,7 +1505,6 @@ _all_compilers: List[Compiler] = [
     PSYQ44,
     PSYQ45,
     PSYQ46,
-    PSYQ44_CCPSX,
     GCC257_PSX,
     GCC263_PSX,
     GCC260_MIPSEL,
@@ -1472,6 +1517,7 @@ _all_compilers: List[Compiler] = [
     GCC2723_MIPSEL,
     GCC280_MIPSEL,
     GCC281_MIPSEL,
+    GCC281_PSX,
     GCC29166_MIPSEL,
     GCC2952_MIPSEL,
     # PSP
@@ -1490,6 +1536,8 @@ _all_compilers: List[Compiler] = [
     MWCCPSP_3_0_1_219,
     # Saturn
     CYGNUS_2_7_96Q3,
+    # Dreamcast
+    SHC_V51R11,
     # PS2
     EE_GCC29_990721,
     EE_GCC29_991111,
@@ -1554,9 +1602,11 @@ _all_compilers: List[Compiler] = [
     MWCC_233_163,
     MWCC_233_163E,
     MWCC_233_163N,
+    MWCC_242_53,
     MWCC_242_81,
     MWCC_242_81R,
     MWCC_247_92,
+    MWCC_247_92P1,
     MWCC_247_105,
     MWCC_247_107,
     MWCC_247_108,
@@ -1573,6 +1623,7 @@ _all_compilers: List[Compiler] = [
     MWCC_43_151,
     MWCC_43_172,
     MWCC_43_188,
+    MWCC_43_202,
     MWCC_43_213,
     PRODG_35,
     PRODG_37,
@@ -1620,6 +1671,7 @@ _all_compilers: List[Compiler] = [
     MSVC66,
     MSVC70,
     MSVC71,
+    MSVC80,
     # Watcom, DOS and Win32
     WATCOM_105_C,
     WATCOM_105_CPP,

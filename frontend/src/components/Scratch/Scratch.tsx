@@ -18,10 +18,10 @@ import ErrorBoundary from "../ErrorBoundary"
 import ScoreBadge, { calculateScorePercent } from "../ScoreBadge"
 import { Tab, TabCloseButton } from "../Tabs"
 
-import AboutScratch from "./AboutScratch"
-import DecompilationPanel from "./DecompilePanel"
-import FamilyPanel from "./FamilyPanel"
 import useLanguageServer from "./hooks/useLanguageServer"
+import AboutPanel from "./panels/AboutPanel"
+import DecompilationPanel from "./panels/DecompilePanel"
+import FamilyPanel from "./panels/FamilyPanel"
 import styles from "./Scratch.module.scss"
 import ScratchMatchBanner from "./ScratchMatchBanner"
 import ScratchProgressBar from "./ScratchProgressBar"
@@ -194,7 +194,7 @@ export default function Scratch({
         switch (id as TabId) {
         case TabId.ABOUT:
             return <Tab key={id} tabKey={id} label="About" className={styles.about}>
-                <AboutScratch
+                <AboutPanel
                     scratch={scratch}
                     setScratch={userIsYou(scratch.owner) ? setScratch : null}
                 />
@@ -274,6 +274,7 @@ export default function Scratch({
                 className={styles.diffTab}
             >
                 {compilation && <CompilationPanel
+                    scratch={scratch}
                     compilation={compilation}
                     isCompiling={isCompiling}
                     isCompilationOld={isCompilationOld}
@@ -334,7 +335,7 @@ export default function Scratch({
                 saveCallback={saveCallback}
                 setDecompilationTabEnabled={setDecompilationTabEnabled}
             />
-            {matchProgressBarEnabledSetting && <div className={styles.progressbar}><ScratchProgressBar matchPercent={matchPercent}/></div>}
+            {matchProgressBarEnabledSetting && <div className={styles.progressbar}><ScratchProgressBar matchPercent={matchPercent} /></div>}
         </ErrorBoundary>
         <ErrorBoundary>
             {layout && <CustomLayout

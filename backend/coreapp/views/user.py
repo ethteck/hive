@@ -1,3 +1,4 @@
+import django_filters
 from django.contrib.auth import logout
 from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
@@ -20,7 +21,7 @@ class CurrentUser(APIView):
     """
 
     def get(self, request: Request) -> Response:
-        user = serialize_profile(request, request.profile)
+        user = serialize_profile(request.profile)
         return Response(user)
 
     def post(self, request: Request) -> Response:
@@ -51,7 +52,7 @@ class CurrentUserScratchList(generics.ListAPIView):  # type: ignore
     pagination_class = ScratchPagination
     serializer_class = TerseScratchSerializer
     filter_backends = [filters.OrderingFilter]
-    ordering_fields = ["score", "creation_time", "last_updated"]
+    ordering_fields = ["creation_time", "last_updated", "score"]
 
     def get_queryset(self) -> QuerySet[Scratch]:
         return Scratch.objects.filter(owner=self.request.profile)
@@ -64,8 +65,12 @@ class UserScratchList(generics.ListAPIView):  # type: ignore
 
     pagination_class = ScratchPagination
     serializer_class = TerseScratchSerializer
-    filter_backends = [filters.OrderingFilter]
-    ordering_fields = ["score", "creation_time", "last_updated"]
+    filterset_fields = ["preset"]
+    filter_backends = [
+        django_filters.rest_framework.DjangoFilterBackend,
+        filters.OrderingFilter,
+    ]
+    ordering_fields = ["creation_time", "last_updated", "score"]
 
     def get_queryset(self) -> QuerySet[Scratch]:
         return Scratch.objects.filter(owner__user__username=self.kwargs["username"])
@@ -78,5 +83,5 @@ def user(request: Request, username: str) -> Response:
     """
 
     return Response(
-        serialize_profile(request, get_object_or_404(Profile, user__username=username))
+        serialize_profile(get_object_or_404(Profile, user__username=username))
     )

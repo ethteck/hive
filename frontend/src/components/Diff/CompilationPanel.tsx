@@ -33,6 +33,7 @@ export type PerSaveObj = {
 }
 
 export type Props = {
+    scratch: api.Scratch
     compilation: api.Compilation
     isCompiling?: boolean
     isCompilationOld?: boolean
@@ -40,7 +41,7 @@ export type Props = {
     perSaveObj: PerSaveObj
 }
 
-export default function CompilationPanel({ compilation, isCompiling, isCompilationOld, selectedSourceLine, perSaveObj }: Props) {
+export default function CompilationPanel({ scratch, compilation, isCompiling, isCompilationOld, selectedSourceLine, perSaveObj }: Props) {
     const usedCompilationRef = useRef<api.Compilation | null>(null)
     const problemState = getProblemState(compilation)
     const [threeWayDiffBase] = useThreeWayDiffBase()
@@ -53,6 +54,7 @@ export default function CompilationPanel({ compilation, isCompiling, isCompilati
     }
 
     const usedDiff = usedCompilationRef.current?.diff_output ?? null
+    const objdiffResult = usedCompilationRef.current?.objdiff_output ?? null
 
     // If this is the first time we re-render after a save, store the diff
     // as a possible three-way diff base.
@@ -103,7 +105,8 @@ export default function CompilationPanel({ compilation, isCompiling, isCompilati
         >
             <Allotment.Pane>
                 <Diff
-                    diff={diff}
+                    diff={diff || objdiffResult}
+                    diffLabel={scratch.diff_label}
                     isCompiling={isCompiling}
                     isCurrentOutdated={isCompilationOld || problemState == ProblemState.ERRORS}
                     threeWayDiffEnabled={threeWayDiffEnabled}

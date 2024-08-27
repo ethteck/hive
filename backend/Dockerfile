@@ -61,7 +61,7 @@ RUN apt-get -y update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -sSL https://install.python-poetry.org/ | \
-    POETRY_VERSION=1.6.1 POETRY_HOME=/etc/poetry python3.10 -
+    POETRY_VERSION=1.8.3 POETRY_HOME=/etc/poetry python3.10 -
 
 COPY --from=nsjail /nsjail/nsjail /bin/nsjail
 
@@ -77,16 +77,20 @@ RUN add-apt-repository -y ppa:dosemu2/ppa && \
 ARG ENABLE_MSDOS_SUPPORT
 ARG ENABLE_PS2_SUPPORT
 ARG ENABLE_WIN32_SUPPORT
+ARG ENABLE_DREAMCAST_SUPPORT
 RUN if [ "${ENABLE_MSDOS_SUPPORT}" = "YES" ] || \
     [ "${ENABLE_PS2_SUPPORT}" = "YES" ] || \
+    [ "${ENABLE_DREAMCAST_SUPPORT}" = "YES" ] || \
     [ "${ENABLE_WIN32_SUPPORT}" = "YES" ]; then \
     dpkg --add-architecture i386 && apt-get update && \
     apt-get install -y -o APT::Immediate-Configure=false \
     wine; \
     fi
 
+ARG ENABLE_PSP_SUPPORT
+
 # Patched mips binutils
-RUN if [ "${ENABLE_PS2_SUPPORT}" = "YES" ]; then \
+RUN if [ "${ENABLE_PS2_SUPPORT}" = "YES" ] || [ "${ENABLE_PSP_SUPPORT}" = "YES" ]; then \
     wget "https://github.com/decompals/binutils-mips-ps2-decompals/releases/download/v0.4/binutils-mips-ps2-decompals-linux-x86-64.tar.gz" && \
     tar xvzf binutils-mips-ps2-decompals-linux-x86-64.tar.gz -C /usr/bin mips-ps2-decompals-as mips-ps2-decompals-nm mips-ps2-decompals-objdump && \
     rm binutils-mips-ps2-decompals-linux-x86-64.tar.gz && \
@@ -128,6 +132,7 @@ USER user
 RUN if [ "${ENABLE_MSDOS_SUPPORT}" = "YES" ] || \
     [ "${ENABLE_NDS_ARM9_SUPPORT}" = "YES" ] || \
     [ "${ENABLE_PS2_SUPPORT}" = "YES" ] || \
+    [ "${ENABLE_DREAMCAST_SUPPORT}" = "YES" ] || \
     [ "${ENABLE_WIN32_SUPPORT}" = "YES" ]; then \
     wineboot --init; \
     fi
@@ -141,7 +146,6 @@ ARG ENABLE_N3DS_SUPPORT
 ARG ENABLE_N64_SUPPORT
 ARG ENABLE_NDS_ARM9_SUPPORT
 ARG ENABLE_PS1_SUPPORT
-ARG ENABLE_PSP_SUPPORT
 ARG ENABLE_SATURN_SUPPORT
 ARG ENABLE_SWITCH_SUPPORT
 
@@ -150,6 +154,7 @@ ENV ENABLE_GC_WII_SUPPORT=${ENABLE_GC_WII_SUPPORT}
 ENV ENABLE_MACOSX_SUPPORT=${ENABLE_MACOSX_SUPPORT}
 ENV ENABLE_MSDOS_SUPPORT=${ENABLE_MSDOS_SUPPORT}
 ENV ENABLE_N3DS_SUPPORT=${ENABLE_N3DS_SUPPORT}
+ENV ENABLE_DREAMCAST_SUPPORT=${ENABLE_DREAMCAST_SUPPORT}
 ENV ENABLE_N64_SUPPORT=${ENABLE_N64_SUPPORT}
 ENV ENABLE_NDS_ARM9_SUPPORT=${ENABLE_NDS_ARM9_SUPPORT}
 ENV ENABLE_PS1_SUPPORT=${ENABLE_PS1_SUPPORT}

@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import io
 import json
@@ -56,8 +57,8 @@ def get_db_asm(request_asm: str) -> Asm:
     return asm
 
 
-# 500 KB
-MAX_FILE_SIZE = 500 * 1024
+# 1 MB
+MAX_FILE_SIZE = 1000 * 1024
 
 
 def cache_object(platform: Platform, file: File[Any]) -> Assembly:
@@ -106,7 +107,7 @@ def diff_compilation(scratch: Scratch, compilation: CompilationResult) -> DiffRe
             diff_flags=scratch.diff_flags,
         )
     except DiffError as e:
-        return DiffResult({}, str(e))
+        return DiffResult(None, str(e))
 
 
 def update_scratch_score(scratch: Scratch, diff: DiffResult) -> None:
@@ -114,6 +115,8 @@ def update_scratch_score(scratch: Scratch, diff: DiffResult) -> None:
     Given a scratch and a diff, update the scratch's score
     """
 
+    if diff.result is None:
+        return
     score = diff.result.get("current_score", scratch.score)
     max_score = diff.result.get("max_score", scratch.max_score)
     if score != scratch.score or max_score != scratch.max_score:
@@ -169,23 +172,36 @@ scratch_condition = condition(
 )
 
 
-def is_asm_empty(asm: str) -> bool:
-    asm = asm.strip()
+def is_contentful_asm(asm: Optional[Asm]) -> bool:
+    if asm is None:
+        return False
 
-    return asm == "" or asm == "nop"
+    asm_text = asm.data.strip()
+
+    if asm_text == "" or asm_text == "nop":
+        return False
+
+    return True
 
 
 def family_etag(request: Request, pk: Optional[str] = None) -> Optional[str]:
     scratch: Optional[Scratch] = Scratch.objects.filter(slug=pk).first()
     if scratch:
-        if scratch.target_assembly.source_asm is None or is_asm_empty(
-            scratch.target_assembly.source_asm.data
-        ):
-            family = Scratch.objects.filter(slug=scratch.slug)
-        else:
+        if is_contentful_asm(scratch.target_assembly.source_asm):
+            assert scratch.target_assembly.source_asm is not None
+
             family = Scratch.objects.filter(
                 target_assembly__source_asm__hash=scratch.target_assembly.source_asm.hash,
             )
+        elif (
+            scratch.target_assembly.elf_object is not None
+            and len(scratch.target_assembly.elf_object) > 0
+        ):
+            family = Scratch.objects.filter(
+                target_assembly__hash=scratch.target_assembly.hash,
+            )
+        else:
+            family = Scratch.objects.filter(slug=scratch.slug)
 
         return str(hash((family, request.headers.get("Accept"))))
     else:
@@ -303,7 +319,7 @@ class ScratchViewSet(
         filters.OrderingFilter,
     ]
     search_fields = ["name", "diff_label"]
-    ordering_fields = ["score", "creation_time", "last_updated"]
+    ordering_fields = ["creation_time", "last_updated", "score"]
 
     def get_serializer_class(self) -> type[serializers.ModelSerializer[Scratch]]:
         if self.action == "list":
@@ -361,6 +377,7 @@ class ScratchViewSet(
         scratch: Scratch = self.get_object()
 
         # Apply partial
+        omit_diff = False
         if request.method == "POST":
             # TODO: use a serializer w/ validation
             if "compiler" in request.data:
@@ -378,11 +395,16 @@ class ScratchViewSet(
             if "libraries" in request.data:
                 libs = [Library(**lib) for lib in request.data["libraries"]]
                 scratch.libraries = libs
+            if "omit_diff" in request.data:
+                omit_diff = request.data["omit_diff"]
 
         compilation = compile_scratch(scratch)
-        diff = diff_compilation(scratch, compilation)
+        if omit_diff:
+            diff = DiffResult()
+        else:
+            diff = diff_compilation(scratch, compilation)
 
-        if request.method == "GET":
+        if not omit_diff and request.method == "GET":
             update_scratch_score(scratch, diff)
 
         compiler_output = ""
@@ -391,14 +413,21 @@ class ScratchViewSet(
         if diff.errors:
             compiler_output += diff.errors + "\n"
 
-        return Response(
-            {
-                "diff_output": diff.result,
-                "compiler_output": compiler_output,
-                "success": compilation.elf_object is not None
-                and len(compilation.elf_object) > 0,
-            }
-        )
+        response = {
+            "diff_output": diff.result,
+            "compiler_output": compiler_output,
+            "success": compilation.elf_object is not None
+            and len(compilation.elf_object) > 0,
+        }
+        if omit_diff:
+
+            def to_base64(obj: bytes) -> str:
+                return base64.b64encode(obj).decode("utf-8")
+
+            response["left_object"] = to_base64(scratch.target_assembly.elf_object)
+            response["right_object"] = to_base64(compilation.elf_object)
+
+        return Response(response)
 
     @action(detail=True, methods=["POST"])
     def decompile(self, request: Request, pk: str) -> Response:
@@ -517,14 +546,21 @@ class ScratchViewSet(
     def family(self, request: Request, pk: str) -> Response:
         scratch: Scratch = self.get_object()
 
-        if scratch.target_assembly.source_asm is None or is_asm_empty(
-            scratch.target_assembly.source_asm.data
-        ):
-            family = Scratch.objects.filter(slug=scratch.slug)
-        else:
+        if is_contentful_asm(scratch.target_assembly.source_asm):
+            assert scratch.target_assembly.source_asm is not None
+
             family = Scratch.objects.filter(
                 target_assembly__source_asm__hash=scratch.target_assembly.source_asm.hash,
             ).order_by("creation_time")
+        elif (
+            scratch.target_assembly.elf_object is not None
+            and len(scratch.target_assembly.elf_object) > 0
+        ):
+            family = Scratch.objects.filter(
+                target_assembly__hash=scratch.target_assembly.hash,
+            ).order_by("creation_time")
+        else:
+            family = Scratch.objects.filter(slug=scratch.slug)
 
         return Response(
             TerseScratchSerializer(family, many=True, context={"request": request}).data

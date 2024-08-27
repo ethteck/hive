@@ -1,9 +1,9 @@
 /* eslint css-modules/no-unused-class: off */
 
-import { createContext, CSSProperties, forwardRef, HTMLAttributes, Fragment, useContext, useRef, useState } from "react"
+import { createContext, CSSProperties, forwardRef, HTMLAttributes, useRef, useState } from "react"
 
 import { VersionsIcon } from "@primer/octicons-react"
-import classNames from "classnames"
+import { DiffResult } from "objdiff-wasm"
 import AutoSizer from "react-virtualized-auto-sizer"
 import { FixedSizeList } from "react-window"
 
@@ -14,120 +14,10 @@ import { ThreeWayDiffBase, useCodeFontSize } from "@/lib/settings"
 import Loading from "../loading.svg"
 
 import styles from "./Diff.module.scss"
+import * as AsmDiffer from "./DiffRowAsmDiffer"
+import * as Objdiff from "./DiffRowObjdiff"
 import DragBar from "./DragBar"
-
-const PADDING_TOP = 8
-const PADDING_BOTTOM = 8
-
-// Regex for tokenizing lines for click-to-highlight purposes.
-// Strings matched by the first regex group (spaces, punctuation)
-// are treated as non-highlightable.
-const RE_TOKEN = /([ \t,()[\]:]+|~>)|%(?:lo|hi)\([^)]+\)|[^ \t,()[\]:]+/g
-
-const SelectedSourceLineContext = createContext<number | null>(null)
-
-type Highlighter = {
-    value: string | null
-    setValue: (value: string | null) => void
-    select: (value: string) => void
-}
-
-function useHighlighter(setAll: Highlighter["setValue"]): Highlighter {
-    const [value, setValue] = useState(null)
-    return {
-        value,
-        setValue,
-        select: newValue => {
-            // When selecting the same value twice (double-clicking), select it
-            // in all diff columns
-            if (value === newValue) {
-                setAll(newValue)
-            } else {
-                setValue(newValue)
-            }
-        },
-    }
-}
-
-function FormatDiffText({ texts, highlighter }: {
-    texts: api.DiffText[]
-    highlighter: Highlighter
-}) {
-    return <> {
-        texts.map((t, index1) =>
-            Array.from(t.text.matchAll(RE_TOKEN)).map((match, index2) => {
-                const text = match[0]
-                const isToken = !match[1]
-                const key = index1 + "," + index2
-
-                let className: string
-                if (t.format == "rotation") {
-                    className = styles[`rotation${t.index % 9}`]
-                } else if (t.format) {
-                    className = styles[t.format]
-                }
-
-                return <span
-                    key={key}
-                    className={classNames(className, {
-                        [styles.highlightable]: isToken,
-                        [styles.highlighted]: (highlighter.value === text),
-                    })}
-                    onClick={e => {
-                        if (isToken) {
-                            highlighter.select(text)
-                            e.stopPropagation()
-                        }
-                    }}
-                >
-                    {text}
-                </span>
-            })
-        )
-    }</>
-}
-
-function DiffCell({ cell, className, highlighter }: {
-    cell: api.DiffCell | undefined
-    className?: string
-    highlighter: Highlighter
-}) {
-    const selectedSourceLine = useContext(SelectedSourceLineContext)
-    const hasLineNo = typeof cell?.src_line != "undefined"
-
-    if (!cell)
-        return <div className={classNames(styles.cell, className)} />
-
-    return <div
-        className={classNames(styles.cell, className, {
-            [styles.highlight]: hasLineNo && cell.src_line == selectedSourceLine,
-        })}
-    >
-        {hasLineNo && <span className={styles.lineNumber}>{cell.src_line}</span>}
-        <FormatDiffText texts={cell.text} highlighter={highlighter} />
-    </div>
-}
-
-function DiffRow({ row, style, highlighter1, highlighter2, highlighter3 }: {
-    row: api.DiffRow
-    style: CSSProperties
-    highlighter1: Highlighter
-    highlighter2: Highlighter
-    highlighter3: Highlighter
-}) {
-    return <li
-        className={styles.row}
-        style={{
-            ...style,
-            top: `${parseFloat(style.top.toString()) + PADDING_TOP}px`,
-            lineHeight: `${style.height.toString()}px`,
-        }}
-    >
-        <DiffCell cell={row.base} highlighter={highlighter1} />
-        <DiffCell cell={row.current} highlighter={highlighter2} />
-        <DiffCell cell={row.previous} highlighter={highlighter3} />
-    </li>
-}
+import { useHighlighers } from "./Highlighter"
 
 // https://github.com/bvaughn/react-window#can-i-add-padding-to-the-top-and-bottom-of-a-list
 const innerElementType = forwardRef<HTMLUListElement, HTMLAttributes<HTMLUListElement>>(({ style, ...rest }, ref) => {
@@ -142,15 +32,26 @@ const innerElementType = forwardRef<HTMLUListElement, HTMLAttributes<HTMLUListEl
 })
 innerElementType.displayName = "innerElementType"
 
-function DiffBody({ diff, fontSize }: { diff: api.DiffOutput | null, fontSize: number | undefined }) {
-    const setHighlightAll: Highlighter["setValue"] = value => {
-        highlighter1.setValue(value)
-        highlighter2.setValue(value)
-        highlighter3.setValue(value)
+const isAsmDifferOutput = (diff: api.DiffOutput | DiffResult): diff is api.DiffOutput => {
+    return Object.prototype.hasOwnProperty.call(diff, "arch_str")
+}
+
+function DiffBody({ diff, diffLabel, fontSize }: { diff: api.DiffOutput | DiffResult | null, diffLabel: string | null, fontSize: number | undefined }) {
+    const { highlighters, setHighlightAll } = useHighlighers(3)
+
+    if (!diff) {
+        return <div className={styles.bodyContainer} />
     }
-    const highlighter1 = useHighlighter(setHighlightAll)
-    const highlighter2 = useHighlighter(setHighlightAll)
-    const highlighter3 = useHighlighter(setHighlightAll)
+
+    let itemData: AsmDiffer.DiffListData | Objdiff.DiffListData
+    let DiffRow: typeof AsmDiffer.DiffRow | typeof Objdiff.DiffRow
+    if (isAsmDifferOutput(diff)) {
+        itemData = AsmDiffer.createDiffListData(diff, diffLabel, highlighters)
+        DiffRow = AsmDiffer.DiffRow
+    } else {
+        itemData = Objdiff.createDiffListData(diff, diffLabel, highlighters)
+        DiffRow = Objdiff.DiffRow
+    }
 
     return <div
         className={styles.bodyContainer}
@@ -159,30 +60,22 @@ function DiffBody({ diff, fontSize }: { diff: api.DiffOutput | null, fontSize: n
             setHighlightAll(null)
         }}
     >
-        {diff?.rows && <AutoSizer>
+        <AutoSizer>
             {({ height, width }: {height: number|undefined, width:number|undefined}) => (
                 <FixedSizeList
                     className={styles.body}
-                    itemCount={diff.rows.length}
-                    itemData={diff.rows}
+                    itemCount={itemData.itemCount}
+                    itemData={itemData}
                     itemSize={(fontSize ?? 12) * 1.33}
                     overscanCount={40}
                     width={width}
                     height={height}
                     innerElementType={innerElementType}
                 >
-                    {({ data, index, style }) =>
-                        <DiffRow
-                            row={data[index]}
-                            style={style}
-                            highlighter1={highlighter1}
-                            highlighter2={highlighter2}
-                            highlighter3={highlighter3}
-                        />
-                    }
+                    {DiffRow as any}
                 </FixedSizeList>
             )}
-        </AutoSizer>}
+        </AutoSizer>
     </div>
 }
 
@@ -201,8 +94,14 @@ function ThreeWayToggleButton({ enabled, setEnabled }: { enabled: boolean, setEn
     </button>
 }
 
+export const PADDING_TOP = 8
+export const PADDING_BOTTOM = 8
+
+export const SelectedSourceLineContext = createContext<number | null>(null)
+
 export type Props = {
-    diff: api.DiffOutput | null
+    diff: api.DiffOutput | DiffResult | null
+    diffLabel: string | null
     isCompiling: boolean
     isCurrentOutdated: boolean
     threeWayDiffEnabled: boolean
@@ -211,7 +110,7 @@ export type Props = {
     selectedSourceLine: number | null
 }
 
-export default function Diff({ diff, isCompiling, isCurrentOutdated, threeWayDiffEnabled, setThreeWayDiffEnabled, threeWayDiffBase, selectedSourceLine }: Props) {
+export default function Diff({ diff, diffLabel, isCompiling, isCurrentOutdated, threeWayDiffEnabled, setThreeWayDiffEnabled, threeWayDiffBase, selectedSourceLine }: Props) {
     const [fontSize] = useCodeFontSize()
 
     const container = useSize<HTMLDivElement>()
@@ -273,7 +172,7 @@ export default function Diff({ diff, isCompiling, isCurrentOutdated, threeWayDif
             </div>}
         </div>
         <SelectedSourceLineContext.Provider value={selectedSourceLine}>
-            <DiffBody diff={diff} fontSize={fontSize} />
+            <DiffBody diff={diff} diffLabel={diffLabel} fontSize={fontSize} />
         </SelectedSourceLineContext.Provider>
     </div>
 }

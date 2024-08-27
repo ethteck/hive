@@ -109,6 +109,15 @@ COMMON_CLANG_FLAGS: Flags = [
     Checkbox(id="clang_no_exceptions", flag="-fno-exceptions"),
 ]
 
+COMMON_SHC_FLAGS: Flags = [
+    FlagSet(id="shc_opt_level", flags=["-optimize=0", "-optimize=1"]),
+    FlagSet(id="shc_opt_type", flags=["-speed", "-size"]),
+    FlagSet(id="shc_round", flags=["-round=zero", "-round=nearest"]),
+    Checkbox(id="shc_debug", flag="-debug"),
+    Checkbox(id="shc_loop", flag="-loop"),
+    Checkbox(id="shc_inline", flag="-inline"),
+]
+
 COMMON_GCC_FLAGS: Flags = [
     FlagSet(id="gcc_opt_level", flags=["-O0", "-O1", "-O2", "-O3"]),
     FlagSet(
@@ -269,10 +278,12 @@ COMMON_MSVC_FLAGS: Flags = [
         id="msvc_opt_level", flags=["/Od", "/O1", "/O2", "/Os", "/Ot", "/Og", "/Ox"]
     ),
     FlagSet(id="msvc_codegen", flags=["/GB", "/G3", "/G4", "/G5", "/G6"]),
+    FlagSet(id="msvc_fp", flags=["/fp:precise", "/fp:strict", "/fp:fast"]),
     Checkbox("msvc_compile_cpp", "/TP"),
     Checkbox("msvc_use_rtti", "/GR"),
     Checkbox("msvc_use_ehsc", "/GX"),
     Checkbox("msvc_disable_stack_checking", "/Gs"),
+    Checkbox("msvc_disable_buffer_security_checks", "/GS-"),
     Checkbox("msvc_runtime_debug_checks", "/GZ"),
     Checkbox("msvc_cdecl", "/Gd"),
     Checkbox("msvc_fastcall", "/Gr"),
