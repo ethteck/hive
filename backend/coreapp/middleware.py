@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Callable, Optional, TYPE_CHECKING, Union
 
 from django.contrib import auth
@@ -39,6 +40,20 @@ def disable_csrf(
 
     return middleware
 
+def request_needs_profile(req: Request):
+    methods_paths = [
+        ("GET", "/api/user"),
+        ("GET", "/api/user/scratches"),
+        ("POST", "/api/scratch"),
+        ("POST", r"/api/scratch/[A-z0-9]+/fork"),
+        ("POST", r"/api/scratch/[A-z0-9]+/claim"),
+        ("POST", "/api/preset"),
+    ]
+    for method, path in methods_paths:
+        if req.method == method and re.match(path, req.path ):
+            return True
+
+    return False
 
 def set_user_profile(
     get_response: Callable[[HttpRequest], Response]
@@ -49,6 +64,7 @@ def set_user_profile(
 
     def middleware(request: Request) -> Response:
         user_agent = request.headers.get("User-Agent")
+        x_forwarded_for = request.headers.get("X-Forwarded-For", "n/a")
 
         # Avoid creating profiles for SSR or bots
         if user_agent is None or (
@@ -80,8 +96,9 @@ def set_user_profile(
                     if profile_user and request.user.is_anonymous:
                         request.user = profile_user
 
-        # If we still don't have a profile, create a new one
-        if not profile:
+        # Otherwise, this is likely their first visit to the site
+        if not profile and request_needs_profile(request):
+            # Create a new profile
             profile = Profile()
 
             # And attach it to the logged-in user, if there is one
@@ -92,21 +109,32 @@ def set_user_profile(
             profile.save()
             request.session["profile_id"] = profile.id
 
-            # More info to help identify why we are creating so many profiles...
-            x_forwarded_for = request.headers.get("X-Forwarded-For", "n/a")
+            # Log profile creation to protect against misconfiguration or abuse
             logger.debug(
-                "Made new profile: User-Agent: %s, IP: %s, name: %s, request path: %s",
+                "Made new profile: %s, User-Agent: %s, IP: %s, Endpoint: %s,",
+                profile,
                 user_agent,
                 x_forwarded_for,
-                profile,
                 request.path,
             )
 
-        if profile.user is None and not request.user.is_anonymous:
-            profile.user = request.user
+        if profile:
+            if profile.user is None and not request.user.is_anonymous:
+                logger.info("%s vs %s ? %s", request.user, profile.user, request.user == profile.user)
+                profile.user = request.user
 
-        profile.last_request_date = now()
-        profile.save()
+            profile.last_request_date = now()
+            profile.save()
+
+        else:
+            profile = Profile()
+            logger.debug(
+                "Made transient profile: %s, User-Agent: %s, IP: %s, Endpoint: %s",
+                profile,
+                user_agent,
+                x_forwarded_for,
+                request.path,
+            )
 
         request.profile = profile
 

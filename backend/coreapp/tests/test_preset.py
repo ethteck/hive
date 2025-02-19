@@ -92,6 +92,9 @@ class PresetTests(BaseTestCase):
             body["platforms"]["dummy"]["presets"][0]["name"]
             == DUMMY_PRESET_DICT["name"]
         )
+        print(user.pk)
+        print(body["platforms"]["dummy"]["presets"][0]["owner"]["id"])
+
         assert body["platforms"]["dummy"]["presets"][0]["owner"]["id"] == user.pk
 
     def test_owner_can_delete_preset(self) -> None:
